@@ -39,11 +39,11 @@ class committee:
 
 
     def risk_eval(self, input_array, cox = None):
-        '''
+        """
         Returns the average index value for input over all members of the committee, unless cox is specified
         it will then perform a risk_eval for that cox model only (doesn't have to be a member even)
         DO NOT INCLUDE TARGET/EVENTS COLUMNS AS INPUT HERE!
-        '''
+        """
 
         if cox is None:
             avg_index = 0.0
@@ -106,7 +106,7 @@ def _convert_to_dataframe(nplist, headers = None):
     If no headers are specified, then the number of the columns are used as names, as is the default in R.'''
     #First, we create a dictionary of the columns
     d = {}
-    for col in xrange(nplist.shape[1]):
+    for col in range(nplist.shape[1]):
         name = headers[col] if headers else 'X' + str(col)
         d[name] = FloatVector(nplist[:, col])
     #Now, we can create a data frame from these R-vectors
@@ -195,6 +195,6 @@ if __name__ == '__main__':
     print("Individually\nInput, Index (Survival Chance)")
     for _d in data_set:
         for _p in _d[0]:
-            print _p[0], com.risk_eval(np.array([_p[0]]))
+            print(_p[0], com.risk_eval(np.array([_p[0]])))
     print("Member hazard")
-    print 1.0, com.members[0].hazard_eval(np.array([1.0]))
+    print(1.0, com.members[0].hazard_eval(np.array([1.0])))
