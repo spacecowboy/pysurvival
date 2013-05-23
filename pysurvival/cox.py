@@ -138,7 +138,7 @@ def _cox_proportional_hazard(data, targetcol, eventcol, headers=None):
     cmd += ', r_data, model=TRUE)'
     coxfit = r(cmd)
     # Print summary of model
-    print(r('summary(coxfit)'))
+    #print(r('summary(coxfit)'))
 
     return coxfit
 
