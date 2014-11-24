@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This script provides the code necessary to create and evaluate a cox model. Code from R is called.
-
-Created on Tue Nov 29 13:57:25 2011
+This script provides the code necessary to create and evaluate a cox model.
+Code from R is called and the library 'survival' is required to be installed.
 
 @author: Jonas Kalderstam
 """
@@ -11,13 +10,14 @@ from rpy2.robjects.packages import importr
 from rpy2.robjects import r as r
 from rpy2 import robjects
 
-#To convert Numpy to R-vectors, we need to import this and activate said conversion
+# To convert Numpy to R-vectors,
+# we need to import this and activate said conversion
 from rpy2.robjects.numpy2ri import numpy2ri
 robjects.conversion.py2ri = numpy2ri
-#rpy2.robjects.activate()
-#To create R vectors
+# rpy2.robjects.activate()
+# To create R vectors
 from rpy2.robjects.vectors import FloatVector
-#For cox modeling
+# For cox modeling
 __survival = importr('survival')
 
 import numpy as np
@@ -64,75 +64,97 @@ class committee:
 
 class cox_model:
     def __init__(self, data, targetcol, eventcol, headers=None):
+        self.colcount = data.shape[1]
         self.data = data
-        self.coxfit = _cox_proportional_hazard(self.data, targetcol, eventcol, headers)
+        self.coxfit = _cox_proportional_hazard(self.data, targetcol,
+                                               eventcol, headers)
         self.targetcol = targetcol
         self.eventcol = eventcol
         self.headers = headers
         self.trn_set = _cox_predict(self.coxfit)
 
     def risk_eval(self, input_array):
-        '''Just to be compatible with ann. Also flips the sign
-        of the outputs to be same order as ann.'''
+        '''
+        Convenience function. The minus makes the output have the same
+        rank order as models which output survival prediction. Useful
+        for calculating the concordance index.
+        '''
         return -self.hazard_eval(input_array)
 
     def hazard_eval(self, input_array):
-        '''
-        DO NOT INCLUDE TARGET/EVENTS COLUMNS AS INPUT HERE!
-        '''
-        #Pad with an extra dimension and target/event columns
-        _tmp_data = np.zeros((1, input_array.shape[0]+2))
-        _tmp_data[0, :-2] = input_array
-
-        return self.hazard_eval_all(_tmp_data)[0]
-
-    def hazard_eval_all(self, input_array):
         if self.coxfit is None:
-            raise IndexError('No model has been trained!')
-        else:
-            #Dimensions must match in R
-            return _cox_predict(self.coxfit, input_array, self.headers)
+            raise ValueError('No model has been trained!')
+        elif input_array.ndim != 2:
+            raise ValueError("Input is expected to be 2-dimensional!")
+        elif self.colcount != input_array.shape[1]:
+            raise ValueError("Input has an incorrect number of columns: " +
+                             "{}, expected {}".format(input_array.shape[1],
+                                                      self.colcount))
+
+        #Dimensions must match in R
+        return _cox_predict(self.coxfit, input_array, self.headers)
 
     def hazard_eval_training(self):
         if self.coxfit is None:
-            raise IndexError('No model has been trained!')
+            raise ValueError('No model has been trained!')
         else:
             return _cox_predict(self.coxfit)
 
-def _convert_to_dataframe(nplist, headers = None):
-    '''Convert from a numpy array of dimension 2 to an R data frame.
+
+def _convert_to_dataframe(array, headers = None):
+    '''
+    Convert from a numpy array of dimension 2 to an R data frame.
     np_list should be a 2 dimensional array of floats and headers, if desired,
-    is a list of strings corresponding to the number of columns in np_list (also matching their indices).
-    If no headers are specified, then the number of the columns are used as names, as is the default in R.'''
+    is a list of strings corresponding to the number of columns in np_list
+    (also matching their indices).
+    If no headers are specified, then the number of the columns are used as
+    names, as is the default in R.
+    '''
+    # array could be a dataframe. Use its headers if possible
+    if headers is None:
+        try:
+            headers = array.columns
+            # Need to be an array for iteration below
+            array = np.array(array)
+        except AttributeError:
+            # It's not a dataframe
+            headers = ['X{}'.format(i) for i in range(array.shape[1])]
+
     #First, we create a dictionary of the columns
     d = {}
-    for col in range(nplist.shape[1]):
-        name = headers[col] if headers else 'X' + str(col)
-        d[name] = FloatVector(nplist[:, col])
+
+    for col, name in enumerate(headers):
+        d[name] = FloatVector(array[:, col])
     #Now, we can create a data frame from these R-vectors
     data = robjects.DataFrame(d)
     return data
 
+
 def _cox_proportional_hazard(data, targetcol, eventcol, headers=None):
     '''
-    This function will create a Cox model for the input data given and return that model.
-    Input is expected to be a numpy array of dimension 2 where each patient is represented by a row and each covariate
-    by a column.
-    target_col and event_col are the names of the columns. If headers are not used, then these must be strings of
-    the columns as 'X0', 'X1', 'X2', 'X3', etc. These are the default column names in R.
+    This function will create a Cox model for the input data given and
+    return that model.
+    Input is expected to be a 2-dimensional numpy array (or pandas dataframe).
+    target_col and event_col are the names of the columns. If headers are not
+    used, then these must be strings of the columns as 'X0', 'X1', etc. These
+    are the default column names in R. If a pandas dataframe is specified,
+    then the column names of the dataframe are used (unless headers are
+    specified separately).
     '''
-    #First convert the input data from numpy to an R dataframe
+    # First convert the input data from numpy to an R dataframe
     r_data = _convert_to_dataframe(data, headers)
     names = list(r_data.names)
-    #Remove target variables
+    # Remove target variables
     names.remove(targetcol)
     names.remove(eventcol)
 
-    #Next we want to create a Cox model for this data
-    #We need to insert the variables into the R environment for ease of use
+    # Next we want to create a Cox model for this data
+    # We need to insert the variables into the R environment for ease of use
     robjects.globalenv['r_data'] = r_data
-    #coxfit = coxph(Surv(target_col, event_col) ~ inputnames, r_data)
-    cmd = 'coxfit <- coxph(Surv({0}, {1}) ~ {2}'.format(targetcol, eventcol, names[0])
+    # coxfit = coxph(Surv(target_col, event_col) ~ inputnames, r_data)
+    cmd = 'coxfit <- coxph(Surv({0}, {1}) ~ {2}'.format(targetcol, eventcol,
+                                                        names[0])
+    # Add remaining input columns
     for name in names[1:]:
         cmd += '+{0}'.format(name)
     cmd += ', r_data, model=TRUE)'
@@ -142,35 +164,35 @@ def _cox_proportional_hazard(data, targetcol, eventcol, headers=None):
 
     return coxfit
 
+
 def _cox_predict(coxfit, npdata=None, headers=None):
     '''
-    Returns an output array, of the same length as the input array. Each output in this array is the prediction of the
+    Returns an output array, of the same length as the input array.
+    Each output in this array is the prediction of the
     cox model and represents the relative risk for all the patients.
-    Input is expected to be a numpy array of dimension 2 where each patient is represented by a row and each covariate
-    by a column. The headers and format of the data must match that of the training data!
+    Input is expected to be a numpy array of dimension 2 where each patient
+    is represented by a row and each covariate
+    by a column. The headers and format of the data must match that of the
+    training data!
     '''
-    #insert into environment
+    # insert into environment
     robjects.globalenv['coxfit'] = coxfit
-    #Use linear(lp) or risk prediction
+    # Use linear(lp) for risk prediction
     if npdata is None:
         prediction = r('predict(coxfit, type="lp")')
     else:
-        #First convert the input data from numpy to an R dataframe
+        # First convert the input data from numpy to an R dataframe
         r_data = _convert_to_dataframe(npdata, headers)
         robjects.globalenv['pred_data'] = r_data
-        #We want to use the exponent directly and bypass the baseline
-
-
-
+        # We want to use the exponent directly and bypass the baseline
         prediction = r('predict(coxfit, newdata=pred_data, type="lp")')
 
-    #Convert this back to a numpy array and return!
+    # Convert this back to a numpy array and return!
     result = np.array(prediction)
     return result
 
 
 if __name__ == '__main__':
-
     #Make sure it works with both names and not
     fit = _cox_proportional_hazard(np.array([[2.0, 1.0, 4.0], [4.0, 1.0, 8.0], [6.0, 1.0, 12.0], [8.0, 1.0, 16.0],
                                   [10.0, 1.0, 20.0], [12.0, 1.0, 24.0], [14.0, 0.0, 16.0]]), 'X2', 'X1')
