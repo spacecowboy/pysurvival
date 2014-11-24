@@ -81,6 +81,14 @@ class cox_model:
         '''
         return -self.hazard_eval(input_array)
 
+    def summary(self):
+        '''
+        Print R's summary
+        '''
+        if self.coxfit is None:
+            raise ValueError('No model has been trained!')
+        print(r('summary(coxfit)'))
+
     def hazard_eval(self, input_array):
         if self.coxfit is None:
             raise ValueError('No model has been trained!')
