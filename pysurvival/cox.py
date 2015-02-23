@@ -12,9 +12,9 @@ from rpy2 import robjects
 
 # To convert Numpy to R-vectors,
 # we need to import this and activate said conversion
-from rpy2.robjects.numpy2ri import numpy2ri
-robjects.conversion.py2ri = numpy2ri
-# rpy2.robjects.activate()
+#from rpy2.robjects.numpy2ri import numpy2ri
+#robjects.conversion.py2ri = numpy2ri
+#robjects.activate()
 # To create R vectors
 from rpy2.robjects.vectors import FloatVector
 # For cox modeling
