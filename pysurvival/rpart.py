@@ -22,7 +22,7 @@ __survival = importr('survival')
 import numpy as np
 import pandas as pd
 import pandas.rpy.common as com
-from cox import _convert_to_dataframe
+from .cox import _convert_to_dataframe
 
 
 class RPartModel(object):
