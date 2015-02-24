@@ -21,16 +21,18 @@ __survival = importr('survival')
 
 import numpy as np
 import pandas as pd
-import pandas.rpy.common as com
 from .cox import _convert_to_dataframe
 
 
 class RPartModel(object):
-    def __init__(self):
+    def __init__(self, highlim=0.25, lowlim=0.25, minbucket=25):
+        self.highlim = highlim
+        self.lowlim = lowlim
+        self.minbucket = minbucket
         self.xcols = None
         self.myfit = None
 
-    def fit(self, df, duration_col, event_col, minbucket=50):
+    def fit(self, df, duration_col, event_col):
         '''
         Fit a data frame.
         '''
@@ -43,11 +45,47 @@ class RPartModel(object):
         cmd = ("myfit = rpart(Surv(r_df${time}, r_df${event}) ~ {incols}, " +
                "data=r_df, minbucket={bucket})").format(time=duration_col,
                                                         event=event_col,
-                                                        bucket=minbucket,
+                                                        bucket=self.minbucket,
                                                         incols='+'.join(self.xcols))
         print(cmd)
         # Run the command
         self.myfit = r(cmd)
+
+        # Now divide into groups for future
+        preds = self.predict(df)
+        hazards = np.unique(preds)
+        # Just to be safe
+        hazards.sort()
+
+        # Convert to actual sizes
+        highlim = int(self.highlim * df.shape[0])
+        lowlim = int(self.lowlim * df.shape[0])
+
+        self._high = []
+        self._low = []
+
+        # Start with high risk, then low risk
+        cumsum = 0
+        for g in hazards:
+            # Append to group
+            self._low.append(g)
+            cumsum += np.sum(preds == g)
+            # Go until the group is a quartile big
+            if np.sum(cumsum) >= lowlim:
+                break
+
+        # Important to go backwards here of course
+        cumsum = 0
+        for g in reversed(hazards):
+            if g in self._low:
+                break
+            # Append to group
+            self._high.append(g)
+            cumsum += np.sum(preds == g)
+            # Go until the group is a quartile big
+            if np.sum(cumsum) >= highlim:
+                break
+        # Mid is the rest
 
     def predict(self, df):
         '''
@@ -69,6 +107,26 @@ class RPartModel(object):
 
         # Return np array of it
         return np.array(prediction)
+
+    def predict_classes(self, df):
+        '''
+        Predict the classes (high, mid, low) of an entire DateFrame.
+
+        Returns a DataFrame.
+        '''
+        res = pd.DataFrame(index=df.index, columns=['group'])
+
+        preds = self.predict(df)
+
+        for i, p in enumerate(preds):
+            if p in self._high:
+                res.iloc[i, 0] = 'high'
+            elif p in self._low:
+                res.iloc[i, 0] = 'low'
+            else:
+                res.iloc[i, 0] = 'mid'
+
+        return res
 
     def summary(self):
         '''
