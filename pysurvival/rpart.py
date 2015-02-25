@@ -101,6 +101,10 @@ class RPartModel(object):
                 break
         # Mid is the rest
 
+        # Remember sizes for the benefit of others
+        self.high_size = np.sum(high)
+        self.low_size = np.sum(low)
+
     def predict(self, df):
         '''
         Returns an array. Each value will correspond to the group assigned,
