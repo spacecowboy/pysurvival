@@ -21,6 +21,7 @@ __survival = importr('survival')
 
 import numpy as np
 import pandas as pd
+from lifelines.statistics import logrank_test
 from .cox import _convert_to_dataframe
 
 
@@ -61,29 +62,42 @@ class RPartModel(object):
         highlim = int(self.highlim * df.shape[0])
         lowlim = int(self.lowlim * df.shape[0])
 
-        self._high = []
-        self._low = []
+        # Save subgroups here, initialize to outer groups
+        self._high = [hazards[-1]]
+        self._low = [hazards[0]]
 
-        # Start with high risk, then low risk
-        cumsum = 0
-        for g in hazards:
-            # Append to group
-            self._low.append(g)
-            cumsum += np.sum(preds == g)
-            # Go until the group is a quartile big
-            if np.sum(cumsum) >= lowlim:
+        # Keep track of entire group here for logrank
+        high = (preds == hazards[-1])
+        low = (preds == hazards[0])
+
+        # Low risk iterates forwards
+        for g in hazards[1:]:
+            if (np.sum(low) < lowlim or
+                not logrank_test(df.loc[low, duration_col],
+                                 df.loc[preds==g, duration_col],
+                                 df.loc[low, event_col],
+                                 df.loc[preds==g, event_col],
+                                 suppress_print=True)[2]):
+                # Append to group
+                self._low.append(g)
+                low |= (preds == g)
+            else:
                 break
 
         # Important to go backwards here of course
-        cumsum = 0
-        for g in reversed(hazards):
+        for g in reversed(hazards[:-1]):
             if g in self._low:
                 break
-            # Append to group
-            self._high.append(g)
-            cumsum += np.sum(preds == g)
-            # Go until the group is a quartile big
-            if np.sum(cumsum) >= highlim:
+            if (np.sum(high) < highlim or
+                not logrank_test(df.loc[high, duration_col],
+                                 df.loc[preds==g, duration_col],
+                                 df.loc[high, event_col],
+                                 df.loc[preds==g, event_col],
+                                 suppress_print=True)[2]):
+                # Append to group
+                self._high.append(g)
+                high |= (preds == g)
+            else:
                 break
         # Mid is the rest
 
