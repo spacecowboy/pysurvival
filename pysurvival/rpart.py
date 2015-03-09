@@ -77,7 +77,7 @@ class RPartModel(object):
                                  df.loc[preds==g, duration_col],
                                  df.loc[low, event_col],
                                  df.loc[preds==g, event_col],
-                                 suppress_print=True)[2]):
+                                 suppress_print=True)[2]).is_significant:
                 # Append to group
                 self._low.append(g)
                 low |= (preds == g)
@@ -93,7 +93,7 @@ class RPartModel(object):
                                  df.loc[preds==g, duration_col],
                                  df.loc[high, event_col],
                                  df.loc[preds==g, event_col],
-                                 suppress_print=True)[2]):
+                                 suppress_print=True)[2]).is_significant:
                 # Append to group
                 self._high.append(g)
                 high |= (preds == g)
