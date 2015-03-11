@@ -26,10 +26,38 @@ from .cox import _convert_to_dataframe
 
 
 class RPartModel(object):
-    def __init__(self, highlim=0.25, lowlim=0.25, minbucket=25):
+    def __init__(self, highlim=0.25, lowlim=0.25,
+                 minsplit=None, minbucket=None,
+                 xval=None, cp=None):
+        '''
+        Parameters:
+        highlim - Minimum size of high risk group. Default 0.25.
+        lowlim - Minimum size of low risk group. Default 0.25.
+
+        R-parameters (copied from rpart manual):
+        minsplit - The minimum number of observations in a node for which the
+                   routine will even try to compute a split. The default is 20.
+                   This parameter can save computation time, since smaller nodes
+                   are almost always pruned away by cross-validation.
+        minbucket - The minimum number of observations in a terminal node. This
+                    defaults to minsplit/3.
+        xval - The number of cross-validations to be done. Usually set to zero
+               during exploratory phases of the analysis. A value of 10, for
+               instance, increases the compute time to 11-fold over a value
+               of 0.
+        cp - The threshold complexity parameter. Default value is 0.01. Should
+             be a value between 0 and 1. A value of cp = 1 will always result
+             in a tree with no splits. The default value of .01 has been
+             reasonably successful at "pre-pruning" trees so that the
+             cross-validation step need only remove 1 or 2 layers, but it
+             sometimes over prunes, particularly for large data sets.
+        '''
         self.highlim = highlim
         self.lowlim = lowlim
         self.minbucket = minbucket
+        self.minsplit = minsplit
+        self.xval = xval
+        self.cp = cp
         self.xcols = None
         self.myfit = None
 
@@ -42,15 +70,36 @@ class RPartModel(object):
         # Insert into namespace
         robjects.globalenv['r_df'] = r_df
 
+        # Build options string
+        options = ''
+        if self.minsplit is not None:
+            options = ', '.join([options,
+                                 'minsplit={}'.format(self.minsplit)])
+        if self.minbucket is not None:
+            options = ', '.join([options,
+                                 'minbucket={}'.format(self.minbucket)])
+        if self.xval is not None:
+            options = ', '.join([options,
+                                 'xval={}'.format(self.xval)])
+        if self.cp is not None:
+            options = ', '.join([options,
+                                 'cp={}'.format(self.cp)])
+
+        if len(options) > 0:
+            options = ', control = rpart.control({})'.format(options)
+
         # Make the command
         cmd = ("myfit = rpart(Surv(r_df${time}, r_df${event}) ~ {incols}, " +
-               "data=r_df, minbucket={bucket})").format(time=duration_col,
-                                                        event=event_col,
-                                                        bucket=self.minbucket,
-                                                        incols='+'.join(self.xcols))
-        #print(cmd)
+               "data=r_df {options})").format(time=duration_col,
+                                              event=event_col,
+                                              options=options,
+                                              incols='+'.join(self.xcols))
         # Run the command
         self.myfit = r(cmd)
+        # Prune it
+        if self.cp is not None and self.cp > 0:
+            cmd = "myfit <- prune(myfit, cp={})".format(self.cp)
+            self.myfit = r(cmd)
 
         # Now divide into groups for future
         preds = self.predict(df)
