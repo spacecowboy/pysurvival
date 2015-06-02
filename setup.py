@@ -10,5 +10,5 @@ setup(name = 'pysurvival',
       url = '',
       packages = ['pysurvival'],
       package_dir = {'pysurvival': 'pysurvival'},
-      install_requires = ['numpy>=1.7', 'rpy2'],
+      install_requires = ['numpy>=1.7', 'rpy2', 'lifelines>=0.6'],
      )
